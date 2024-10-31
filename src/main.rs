@@ -1,3 +1,4 @@
+use clap::builder::styling::Color;
 use clap::Parser;
 use magick_rust::{self, bindings, magick_wand_genesis, MagickError, MagickWand};
 use std::fs;
@@ -5,6 +6,7 @@ use std::path;
 use std::sync::Once;
 
 static START: Once = Once::new();
+type ImageBytes = Vec<u8>;
 
 #[derive(Parser, Debug)]
 #[command(version,about,long_about = None)]
@@ -32,36 +34,25 @@ struct Config {
     output_dir: path::PathBuf,
 }
 
-fn resize(filepath: &str, config: &Config) -> Result<Vec<u8>, MagickError> {
-    START.call_once(|| {
-        magick_wand_genesis();
-    });
-    let wand = MagickWand::new();
-    wand.read_image(filepath)?;
-    wand.fit(config.image_x, config.image_y);
-    wand.write_image_blob(config.output_format.as_str())
-}
-/* STUB: does not do anything */
-fn dither(filepath: &str, config: &Config) -> Result<Vec<u8>, MagickError> {
-    START.call_once(|| {
-        magick_wand_genesis();
-    });
-    let _dtype = match config.dither_type.as_str() {
-        "floyd" => bindings::DitherMethod_FloydSteinbergDitherMethod,
-        _ => bindings::DitherMethod_UndefinedDitherMethod,
-    };
-    let wand = MagickWand::new();
-    wand.read_image(filepath)?;
-    wand.write_image_blob(config.output_format.as_str())
-}
-
 fn main() {
     let config = Config::parse();
 
-    match resize("test.jpg", &config) {
-        Ok(bytes) => {
-            fs::write(format!("test.{}", config.output_format), bytes).expect("write failed");
+    START.call_once(|| {
+        magick_wand_genesis();
+    });
+    let wand = MagickWand::new();
+    if let Ok(_) = wand.read_image("test.jpg") {
+        wand.fit(config.image_x, config.image_y);
+        if let Ok(_) = wand.quantize_image(
+            16,
+            magick_rust::ColorspaceType::sRGB,
+            16,
+            magick_rust::DitherMethod::FloydSteinberg,
+            false,
+        ) {
+            if let Ok(img) = wand.write_image_blob("test.png") {
+                fs::write(format!("test.{}", config.output_format), img).expect("write failed");
+            }
         }
-        Err(e) => println!("error: {}", e),
     }
 }
